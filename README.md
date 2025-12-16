@@ -1,7 +1,7 @@
 # ⚡ SEWU AUDIO - Running Text Display System
 
 <p align="center">
-  <img src="images/ss1.png" alt="SEWU AUDIO Banner" width="100%">
+  <img src="images/ss1.png" alt="SEWU AUDIO Banner" width="50%">
 </p>
 
 **SEWU AUDIO** adalah sistem display LED P10 berbasis NodeMCU ESP8266 untuk menampilkan jam, tanggal, suhu, dan informasi running text. Cocok untuk sound system, rental, hajatan, dan keperluan promosi.
@@ -106,7 +106,7 @@ Buka **Sketch → Include Library → Manage Libraries**, lalu install:
 - `Rtc by Makuna`
 
 Library tambahan (install manual):
-- [HJS589](https://github.com/example/HJS589) - DMD Library untuk ESP8266
+- [HJS589]([https://github.com/example/HJS589](https://github.com/hobysampingan/sewu-audio-running-text/tree/main/libraries/HJS589)) - DMD Library untuk ESP8266
 
 ### 2. Konfigurasi Arduino IDE
 
@@ -116,7 +116,7 @@ Library tambahan (install manual):
 
 ### 3. Upload Sketch
 
-1. Buka file `jadwaljamsholat1.ino`
+1. Buka file `sewu.ino`
 2. Pastikan semua file header ada di folder yang sama:
    - `sewuwebpage.h`
 3. Upload ke NodeMCU
@@ -304,3 +304,4 @@ copies of the Software...
   <b>⚡ SEWU AUDIO - Sound System & Lighting ⚡</b><br>
   <i>Professional Running Text Display System</i>
 </p>
+
