@@ -30,6 +30,7 @@ SEWU AUDIO - Sound System & Lighting
 #include <Wire.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <DNSServer.h>
 #include <RtcDS3231.h>
 RtcDS3231<TwoWire> Rtc(Wire);
 
@@ -51,6 +52,7 @@ struct ConfigInfo {
 
 struct ConfigWifi {
   char wifissid[64];
+  char wifipass[64];
 };
 
 struct ConfigDisp {
@@ -69,11 +71,10 @@ char monthYear[][4] = {"DES", "JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "
 // SETUP DMD - Will be initialized dynamically based on panel count
 HJS589 *Disp = nullptr;
 
-// WEB Server
+// WEB Server & DNS for Captive Portal
 ESP8266WebServer server(80);
-
-const char* password = "sewuaudio123";
-const char* mySsid = "SEWU AUDIO"; // WiFi AP Name
+DNSServer dnsServer;
+const byte DNS_PORT = 53;
 
 IPAddress local_ip(192, 168, 4, 1);
 IPAddress gateway(192, 168, 4, 1);
@@ -131,6 +132,7 @@ void buildXML(){
   XML += "<rInfo2>"; XML += configinfo.info2; XML += "</rInfo2>";
   XML += "<rInfo3>"; XML += configinfo.info3; XML += "</rInfo3>";
   XML += "<rWifissid>"; XML += configwifi.wifissid; XML += "</rWifissid>";
+  XML += "<rWifipass>"; XML += configwifi.wifipass; XML += "</rWifipass>";
   XML += "<rCerah>"; XML += configdisp.cerah; XML += "</rCerah>";
   XML += "<rPanelCount>"; XML += configdisp.panelCount; XML += "</rPanelCount>";
 
@@ -228,6 +230,10 @@ void LoadDataAwal() {
     strlcpy(configwifi.wifissid, "SEWU AUDIO", sizeof(configwifi.wifissid));
   }
 
+  if (strlen(configwifi.wifipass) == 0) {
+    strlcpy(configwifi.wifipass, "sewuaudio123", sizeof(configwifi.wifipass));
+  }
+
   if (configdisp.cerah == 0) {
     configdisp.cerah = 100;
   }
@@ -286,11 +292,17 @@ void setup() {
   // WiFi AP Mode Only
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(local_ip, gateway, netmask);
-  WiFi.softAP(configwifi.wifissid, password);
+  WiFi.softAP(configwifi.wifissid, configwifi.wifipass);
   digitalWrite(pin_led, LOW);
+  
+  // Start DNS Server for Captive Portal
+  dnsServer.start(DNS_PORT, "*", local_ip);
+  Serial.println("DNS Captive Portal started");
   
   Serial.print("AP SSID: ");
   Serial.println(configwifi.wifissid);
+  Serial.print("AP Password: ");
+  Serial.println(configwifi.wifipass);
   Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
 
@@ -497,6 +509,7 @@ void loadWifiConfig(const char *fileconfigwifi, ConfigWifi &configwifi) {
   }
 
   strlcpy(configwifi.wifissid, doc["wifissid"] | "SEWU AUDIO", sizeof(configwifi.wifissid));
+  strlcpy(configwifi.wifipass, doc["wifipass"] | "sewuaudio123", sizeof(configwifi.wifipass));
 
   configFileWifi.close();
 }
@@ -549,6 +562,7 @@ uint8_t tampilanMode;
 void loop() {
   yield();
   
+  dnsServer.processNextRequest();  // Captive Portal
   server.handleClient();
   yield();
 
