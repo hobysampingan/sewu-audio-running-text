@@ -58,6 +58,7 @@ struct ConfigWifi {
 struct ConfigDisp {
   int cerah;
   int panelCount;
+  int displayMode;  // 0 = Normal, 1 = Running Text Only
 };
 
 // LED Internal
@@ -135,6 +136,7 @@ void buildXML(){
   XML += "<rWifipass>"; XML += configwifi.wifipass; XML += "</rWifipass>";
   XML += "<rCerah>"; XML += configdisp.cerah; XML += "</rCerah>";
   XML += "<rPanelCount>"; XML += configdisp.panelCount; XML += "</rPanelCount>";
+  XML += "<rDisplayMode>"; XML += configdisp.displayMode; XML += "</rDisplayMode>";
 
   XML += "</rData>";
   yield();
@@ -241,6 +243,8 @@ void LoadDataAwal() {
   if (configdisp.panelCount == 0) {
     configdisp.panelCount = 2;
   }
+  
+  // displayMode default is 0 (Normal), no need to set if 0
 }
 
 //----------------------------------------------------------------------
@@ -377,6 +381,7 @@ void loadDispConfig(const char *fileconfigdisp, ConfigDisp &configdisp) {
   
   configdisp.cerah = doc["cerah"];
   configdisp.panelCount = doc["panelCount"] | 2;
+  configdisp.displayMode = doc["displayMode"] | 0;
 
   configFileDisp.close();
 }
@@ -558,6 +563,7 @@ void handleSettingWifiUpdate() {
 // LOOP
 
 uint8_t tampilanMode;
+uint8_t runningTextMode;  // For Running Text Only mode: 0=info1, 1=info2, 2=info3
 
 void loop() {
   yield();
@@ -566,28 +572,45 @@ void loop() {
   server.handleClient();
   yield();
 
-  switch(tampilanMode) {
-    case 0:
-      TampilJamBesar();
-      break;
-    case 1:
-      TampilTanggal();
-      break;
-    case 2:
-      TampilSuhu();
-      break;
-    case 3:
-      TeksJalanNama();
-      break;
-    case 4:
-      TeksJalanInfo1();
-      break;
-    case 5:
-      TeksJalanInfo2();
-      break;
-    case 6:
-      TeksJalanInfo3();
-      break;
+  // Check display mode
+  if (configdisp.displayMode == 1) {
+    // Running Text Only Mode
+    switch(runningTextMode) {
+      case 0:
+        TeksJalanFullInfo1();
+        break;
+      case 1:
+        TeksJalanFullInfo2();
+        break;
+      case 2:
+        TeksJalanFullInfo3();
+        break;
+    }
+  } else {
+    // Normal Mode
+    switch(tampilanMode) {
+      case 0:
+        TampilJamBesar();
+        break;
+      case 1:
+        TampilTanggal();
+        break;
+      case 2:
+        TampilSuhu();
+        break;
+      case 3:
+        TeksJalanNama();
+        break;
+      case 4:
+        TeksJalanInfo1();
+        break;
+      case 5:
+        TeksJalanInfo2();
+        break;
+      case 6:
+        TeksJalanInfo3();
+        break;
+    }
   }
   
   yield();
@@ -834,6 +857,78 @@ void TeksJalanInfo3() {
       return;
     }
     Disp->drawText(width - x, 8, configinfo.info3);
+  }
+}
+
+//----------------------------------------------------------------------
+// FULL SCREEN RUNNING TEXT (Running Text Only Mode)
+
+void TeksJalanFullInfo1() {
+  static uint32_t pM;
+  static uint32_t x;
+  static uint32_t Speed = 40;
+  int width = Disp->width();
+  
+  Disp->setFont(ElektronMart6x16);
+  int fullScroll = Disp->textWidth(configinfo.info1) + width;
+  
+  if((millis() - pM) > Speed) {
+    pM = millis();
+    if (x < fullScroll) {
+      ++x;
+    } else {
+      x = 0;
+      Disp->clear();
+      runningTextMode = 1;
+      return;
+    }
+    Disp->drawText(width - x, 0, configinfo.info1);
+  }
+}
+
+void TeksJalanFullInfo2() {
+  static uint32_t pM;
+  static uint32_t x;
+  static uint32_t Speed = 40;
+  int width = Disp->width();
+  
+  Disp->setFont(ElektronMart6x16);
+  int fullScroll = Disp->textWidth(configinfo.info2) + width;
+  
+  if((millis() - pM) > Speed) {
+    pM = millis();
+    if (x < fullScroll) {
+      ++x;
+    } else {
+      x = 0;
+      Disp->clear();
+      runningTextMode = 2;
+      return;
+    }
+    Disp->drawText(width - x, 0, configinfo.info2);
+  }
+}
+
+void TeksJalanFullInfo3() {
+  static uint32_t pM;
+  static uint32_t x;
+  static uint32_t Speed = 40;
+  int width = Disp->width();
+  
+  Disp->setFont(ElektronMart6x16);
+  int fullScroll = Disp->textWidth(configinfo.info3) + width;
+  
+  if((millis() - pM) > Speed) {
+    pM = millis();
+    if (x < fullScroll) {
+      ++x;
+    } else {
+      x = 0;
+      Disp->clear();
+      runningTextMode = 0;
+      return;
+    }
+    Disp->drawText(width - x, 0, configinfo.info3);
   }
 }
 
