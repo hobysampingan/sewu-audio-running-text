@@ -97,6 +97,14 @@ void ICACHE_RAM_ATTR refresh();
 int I2C_ClearBus();
 void textCenter(int y, String Msg);
 void branding();
+void checkWiFiAP();
+void restartWiFiAP();
+
+// WiFi Watchdog Variables
+unsigned long lastWiFiCheck = 0;
+const unsigned long WIFI_CHECK_INTERVAL = 5000;  // Check setiap 5 detik
+unsigned long wifiDownSince = 0;
+bool wifiWasDown = false;
 
 //----------------------------------------------------------------------
 // XML DATA BRIDGE BETWEEN DEVICE AND WEB
@@ -293,11 +301,49 @@ void setup() {
 
   LoadDataAwal();
 
-  // WiFi AP Mode Only
+  // WiFi AP Mode Only - dengan konfigurasi stabil
+  WiFi.persistent(true);  // Simpan konfigurasi ke flash
+  WiFi.setAutoConnect(false);
+  WiFi.setAutoReconnect(false);
+  
+  // Bersihkan state WiFi sebelumnya
+  WiFi.disconnect(true);
+  WiFi.softAPdisconnect(true);
+  delay(100);
+  
+  // Set mode dan konfigurasi
+  WiFi.mode(WIFI_OFF);
+  delay(100);
   WiFi.mode(WIFI_AP);
+  delay(100);
+  
+  // Konfigurasi IP
   WiFi.softAPConfig(local_ip, gateway, netmask);
-  WiFi.softAP(configwifi.wifissid, configwifi.wifipass);
-  digitalWrite(pin_led, LOW);
+  delay(100);
+  
+  // Start AP dengan retry
+  int apRetry = 0;
+  bool apStarted = false;
+  while (!apStarted && apRetry < 5) {
+    apStarted = WiFi.softAP(configwifi.wifissid, configwifi.wifipass, 1, false, 4);
+    if (!apStarted) {
+      Serial.print("AP start failed, retry ");
+      Serial.println(apRetry + 1);
+      delay(500);
+      apRetry++;
+    }
+  }
+  
+  if (apStarted) {
+    Serial.println("WiFi AP started successfully!");
+    digitalWrite(pin_led, LOW);
+  } else {
+    Serial.println("WiFi AP failed after retries, will retry in loop");
+    digitalWrite(pin_led, HIGH);
+  }
+  
+  // Set WiFi power untuk stabilitas
+  WiFi.setOutputPower(20.5);  // Max power
   
   // Start DNS Server for Captive Portal
   dnsServer.start(DNS_PORT, "*", local_ip);
@@ -570,6 +616,10 @@ void loop() {
   
   dnsServer.processNextRequest();  // Captive Portal
   server.handleClient();
+  yield();
+  
+  // WiFi AP Watchdog - Auto recovery
+  checkWiFiAP();
   yield();
 
   // Check display mode
@@ -958,6 +1008,117 @@ void branding() {
 }
 
 //----------------------------------------------------------------------
+// WIFI AP WATCHDOG - Auto Recovery
+
+void checkWiFiAP() {
+  unsigned long currentMillis = millis();
+  
+  // Hanya check setiap WIFI_CHECK_INTERVAL ms
+  if (currentMillis - lastWiFiCheck < WIFI_CHECK_INTERVAL) {
+    return;
+  }
+  lastWiFiCheck = currentMillis;
+  
+  // Cek status WiFi AP
+  WiFiMode_t currentMode = WiFi.getMode();
+  IPAddress apIP = WiFi.softAPIP();
+  int stationCount = WiFi.softAPgetStationNum();
+  
+  // WiFi AP dianggap DOWN jika:
+  // 1. Mode bukan AP atau AP_STA
+  // 2. Atau IP AP adalah 0.0.0.0
+  bool wifiIsDown = (currentMode != WIFI_AP && currentMode != WIFI_AP_STA) || 
+                    (apIP[0] == 0 && apIP[1] == 0 && apIP[2] == 0 && apIP[3] == 0);
+  
+  if (wifiIsDown) {
+    if (!wifiWasDown) {
+      // Baru saja down, catat waktu
+      wifiDownSince = currentMillis;
+      wifiWasDown = true;
+      Serial.println("WARNING: WiFi AP appears to be down!");
+    } else {
+      // Sudah down, cek berapa lama
+      unsigned long downDuration = currentMillis - wifiDownSince;
+      Serial.print("WiFi AP down for ");
+      Serial.print(downDuration / 1000);
+      Serial.println(" seconds");
+      
+      // Jika sudah down lebih dari 3 detik, restart AP
+      if (downDuration > 3000) {
+        Serial.println("Attempting WiFi AP restart...");
+        restartWiFiAP();
+      }
+    }
+    digitalWrite(pin_led, HIGH);  // LED mati = WiFi problem
+  } else {
+    // WiFi OK
+    if (wifiWasDown) {
+      Serial.println("WiFi AP recovered!");
+      wifiWasDown = false;
+    }
+    digitalWrite(pin_led, LOW);   // LED nyala = WiFi OK
+  }
+}
+
+void restartWiFiAP() {
+  Serial.println("=== RESTARTING WIFI AP ===");
+  
+  // Stop DNS server dulu
+  dnsServer.stop();
+  yield();
+  
+  // Disconnect dan matikan WiFi
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  yield();
+  delay(200);
+  
+  WiFi.mode(WIFI_OFF);
+  yield();
+  delay(200);
+  
+  // Nyalakan kembali
+  WiFi.mode(WIFI_AP);
+  yield();
+  delay(100);
+  
+  WiFi.softAPConfig(local_ip, gateway, netmask);
+  yield();
+  delay(100);
+  
+  // Start AP dengan retry
+  int apRetry = 0;
+  bool apStarted = false;
+  while (!apStarted && apRetry < 3) {
+    yield();
+    apStarted = WiFi.softAP(configwifi.wifissid, configwifi.wifipass, 1, false, 4);
+    if (!apStarted) {
+      Serial.print("AP restart failed, retry ");
+      Serial.println(apRetry + 1);
+      delay(300);
+      apRetry++;
+    }
+  }
+  
+  if (apStarted) {
+    Serial.println("WiFi AP restarted successfully!");
+    Serial.print("AP IP: ");
+    Serial.println(WiFi.softAPIP());
+    
+    // Restart DNS server
+    dnsServer.start(DNS_PORT, "*", local_ip);
+    
+    wifiWasDown = false;
+    digitalWrite(pin_led, LOW);
+  } else {
+    Serial.println("WiFi AP restart FAILED - will retry next cycle");
+    digitalWrite(pin_led, HIGH);
+  }
+  
+  yield();
+}
+
+//----------------------------------------------------------------------
 // I2C_ClearBus - Avoid RTC read failure
 
 int I2C_ClearBus() {
@@ -969,7 +1130,7 @@ int I2C_ClearBus() {
   pinMode(SDA, INPUT_PULLUP);
   pinMode(SCL, INPUT_PULLUP);
 
-  delay(2500);
+  delay(500);  // Dikurangi dari 2500ms untuk stabilitas WiFi
 
   boolean SCL_LOW = (digitalRead(SCL) == LOW);
   if (SCL_LOW) {
@@ -991,7 +1152,8 @@ int I2C_ClearBus() {
     int counter = 20;
     while (SCL_LOW && (counter > 0)) {
       counter--;
-      delay(100);
+      delay(50);  // Dikurangi dari 100ms
+      yield();    // Jaga WiFi stack
       SCL_LOW = (digitalRead(SCL) == LOW);
     }
     if (SCL_LOW) {
